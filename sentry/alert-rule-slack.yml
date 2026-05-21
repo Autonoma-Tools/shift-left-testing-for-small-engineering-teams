@@ -1,0 +1,78 @@
+# Sentry alert rule: route high-severity production errors to #eng-alerts in Slack.
+#
+# Apply this rule under: Sentry project settings -> Alerts -> Create Alert -> Issue Alert.
+# Sentry's UI does not import YAML directly; this file is the source of truth
+# you keep in version control, and you mirror it into the Sentry UI (or use
+# the Sentry Terraform provider / API to apply it).
+#
+# Replace the two placeholders before applying:
+#   - project_slug: your Sentry project slug (e.g. "web-frontend")
+#   - slack_channel: the channel you want noisy enough to be noticed but quiet
+#                    enough to not be muted. We use #eng-alerts.
+
+alert:
+  name: "Production errors -> #eng-alerts"
+  project_slug: "your-project-slug"   # REPLACE: e.g. "web-frontend"
+  environment: "production"
+
+  # Fire when: a Sentry issue's events spike past 5 in a single minute AND
+  # the event level is `error` or worse (fatal). We do NOT alert on warnings
+  # or info — those drown the channel and train people to ignore Slack.
+  filter_match: "all"
+  conditions:
+    - id: "sentry.rules.conditions.event_frequency.EventFrequencyCondition"
+      interval: "1m"
+      value: 5
+    - id: "sentry.rules.filters.level.LevelFilter"
+      match: "gte"           # greater than or equal to
+      level: "error"         # error or fatal
+
+  # Only the first matching action fires per issue per cooldown window.
+  # Cooldown prevents one flapping issue from spamming Slack every minute.
+  frequency_minutes: 30
+
+  actions:
+    - id: "sentry.integrations.slack.notify_action.SlackNotifyServiceAction"
+      workspace: "your-slack-workspace"   # REPLACE: Slack workspace name in Sentry
+      channel: "#eng-alerts"              # REPLACE if you want a different channel
+      tags: "environment,release,url"     # show these as fields in the Slack message
+      notes: |
+        On-call: ack within 5 minutes. If unrelated to a deploy in the last
+        hour, page the next on-call instead of investigating solo.
+
+# ---------------------------------------------------------------------------
+# Reference: sample Slack webhook payload Sentry POSTs to the channel.
+#
+# Sentry's Slack integration uses Slack's `attachments` field with the
+# `color` set by issue level (red = fatal/error). The renderer in Slack
+# turns this into the familiar bordered card with title, fields, footer.
+# ---------------------------------------------------------------------------
+#
+# {
+#   "channel": "#eng-alerts",
+#   "username": "Sentry",
+#   "icon_url": "https://sentry.io/_static/favicon.png",
+#   "attachments": [
+#     {
+#       "color": "#E03E2F",
+#       "title": "TypeError: Cannot read properties of undefined (reading 'id')",
+#       "title_link": "https://your-org.sentry.io/issues/123456789/?referrer=slack",
+#       "text": "at CheckoutPage.handleSubmit (src/pages/checkout.tsx:142)",
+#       "fields": [
+#         { "title": "Project",     "value": "web-frontend",  "short": true },
+#         { "title": "Environment", "value": "production",    "short": true },
+#         { "title": "Release",     "value": "frontend@a1b2c3d", "short": true },
+#         { "title": "Events",      "value": "12 in 1m",      "short": true },
+#         { "title": "URL",         "value": "https://app.example.com/checkout", "short": false }
+#       ],
+#       "footer": "Sentry",
+#       "footer_icon": "https://sentry.io/_static/favicon.png",
+#       "ts": 1716240000,
+#       "actions": [
+#         { "type": "button", "text": "View issue",  "url": "https://your-org.sentry.io/issues/123456789/" },
+#         { "type": "button", "text": "Assign to me","url": "https://your-org.sentry.io/issues/123456789/?assign=me" },
+#         { "type": "button", "text": "Resolve",     "url": "https://your-org.sentry.io/issues/123456789/?resolve=true" }
+#       ]
+#     }
+#   ]
+# }

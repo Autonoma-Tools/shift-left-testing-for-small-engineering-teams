@@ -1,0 +1,14 @@
+{
+  "name": "shift-left-testing-for-small-engineering-teams",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Companion code for the Autonoma blog post 'Shift-Left Testing for Small Engineering Teams'.",
+  "scripts": {
+    "test": "playwright test",
+    "test:checkout": "playwright test tests/checkout.spec.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  }
+}

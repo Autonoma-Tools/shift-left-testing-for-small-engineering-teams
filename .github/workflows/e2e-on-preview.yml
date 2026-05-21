@@ -1,0 +1,85 @@
+# GitHub Actions workflow: run Playwright E2E tests against Vercel preview deployments.
+#
+# Trigger: every time Vercel finishes a preview deployment for a PR, GitHub
+# receives a `deployment_status` event. This workflow filters that event down
+# to successful Vercel previews, pulls the preview URL out of the payload,
+# and runs the Playwright suite against that URL.
+#
+# Required GitHub repo secrets:
+#   - VERCEL_TOKEN          (read-only token; optional, only if you need to
+#                            call the Vercel API for richer deployment data)
+#
+# Required GitHub repo configuration:
+#   - The repo must be linked to Vercel so deployment_status events fire.
+#
+# Notes:
+#   - `PLAYWRIGHT_BASE_URL` is set per-run from the deployment payload, not
+#     from a static secret. That is the whole point of preview testing:
+#     each run targets the ephemeral URL Vercel just produced.
+#   - This workflow does NOT run on `pull_request` directly; it waits for
+#     Vercel to finish so we don't race the deployment.
+
+name: E2E on Vercel Preview
+
+on:
+  deployment_status:
+
+jobs:
+  playwright-on-preview:
+    # Only run when Vercel reports a successful preview deployment.
+    # `environment` is set by Vercel; "Preview" excludes Production deploys.
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment_status.environment == 'Preview' &&
+      github.event.deployment.creator.login == 'vercel[bot]'
+
+    runs-on: ubuntu-latest
+
+    env:
+      # Extract the ephemeral preview URL Vercel just published.
+      # `target_url` is the public preview URL on the deployment_status event.
+      PLAYWRIGHT_BASE_URL: ${{ github.event.deployment_status.target_url }}
+
+    steps:
+      # 1. Check out the commit the preview was built from, not the PR HEAD.
+      #    This guarantees the tests we run match the code that's deployed.
+      - name: Check out repository at deployed SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.deployment.sha }}
+
+      # 2. Install Node. Match the version your app uses in CI.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # 3. Install project dependencies (including @playwright/test).
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. Install the Playwright browsers + OS-level system deps.
+      #    `--with-deps` pulls in the apt packages Chromium/Firefox need on
+      #    Ubuntu runners. Without it, browser launches fail with cryptic
+      #    shared-library errors.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      # 5. Run the suite against the preview URL.
+      #    Playwright reads PLAYWRIGHT_BASE_URL from the env (or you can wire
+      #    it through `use.baseURL` in playwright.config.ts).
+      - name: Run Playwright tests against preview
+        run: npx playwright test
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ env.PLAYWRIGHT_BASE_URL }}
+
+      # 6. Always upload the HTML report so failures are debuggable from the
+      #    PR check, not just from a red X in the Actions tab.
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

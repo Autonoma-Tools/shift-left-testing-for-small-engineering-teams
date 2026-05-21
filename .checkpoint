@@ -1,9 +1,9 @@
 {
   "version": 1,
   "slug": "shift-left-testing-for-small-engineering-teams",
-  "step": "created",
-  "completed_specs": [],
-  "pending_specs": ["vercel-preview-hook", "sentry-to-slack", "claude-code-pr-prompt"],
+  "step": "deps_written",
+  "completed_specs": ["vercel-preview-hook", "sentry-to-slack", "claude-code-pr-prompt"],
+  "pending_specs": [],
   "created_at": "2026-05-21T00:00:00Z",
-  "updated_at": "2026-05-21T00:00:00Z"
+  "updated_at": "2026-05-21T00:00:01Z"
 }
